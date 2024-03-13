@@ -217,17 +217,13 @@ static void esp_zb_task(void *pvParameters) {
     esp_zb_main_loop_iteration();
 }
 
-static LGFX lcd;  // LGFXのインスタンスを作成。
-static LGFX_Sprite sprite(
-    &lcd);  // スプライトを使う場合はLGFX_Spriteのインスタンスを作成。
+// static LGFX lcd;  // LGFXのインスタンスを作成。
+// static LGFX_Sprite sprite(
+//     &lcd);  // スプライトを使う場合はLGFX_Spriteのインスタンスを作成。
 
 extern "C" {
 
 void app_main(void) {
-    lcd.init();
-    lcd.setRotation(1);
-    lcd.pushImage(0, 0, 320, 60, image_data_gw_title);
-
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config  = ESP_ZB_DEFAULT_HOST_CONFIG(),
@@ -240,18 +236,38 @@ void app_main(void) {
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
     ESP_ERROR_CHECK(esp_zb_gateway_console_init());
 #endif
-    // #if CONFIG_EXAMPLE_CONNECT_WIFI
-    //     ESP_ERROR_CHECK(example_connect());
-    // #if CONFIG_ESP_COEX_SW_COEXIST_ENABLE
-    //     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
-    //     esp_coex_wifi_i154_enable();
-    // #else
-    //     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-    // #endif
-    // #endif
+// #if CONFIG_EXAMPLE_CONNECT_WIFI
+//     ESP_ERROR_CHECK(example_connect());
+// #if CONFIG_ESP_COEX_SW_COEXIST_ENABLE
+//     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
+//     esp_coex_wifi_i154_enable();
+// #else
+//     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+// #endif
+// #endif
 
     switch_driver_init(button_func_pair, PAIR_SIZE(button_func_pair),
                        esp_zb_buttons_handler);
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
+
+    gpio_num_t btnA = gpio_num_t(39);
+    gpio_reset_pin(btnA);
+    gpio_set_direction(btnA, GPIO_MODE_INPUT);
+
+    while (1) {
+        if (gpio_get_level(btnA) == false) {
+            vTaskDelay(100);
+            if (gpio_get_level(btnA) == false) {
+                ESP_LOGI(TAG, "Reset Device");
+                esp_zb_factory_reset();
+                esp_restart();
+            }
+            vTaskDelay(1000);
+        }
+    }
+
+    lcd.init();
+    lcd.setRotation(1);
+    lcd.pushImage(0, 0, 320, 60, image_data_gw_title);
 }
 }

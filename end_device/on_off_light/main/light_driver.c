@@ -48,8 +48,11 @@ static led_strip_handle_t s_led_strip;
 static uint8_t s_red = 0, s_green = 0, s_blue = 255;
 
 void light_driver_set_power(bool power) {
-    ESP_ERROR_CHECK(led_strip_set_pixel(s_led_strip, 0, s_red * power,
-                                        s_green * power, s_blue * power));
+    for (uint8_t i = 0; i < NANO_C6_STRIP_LED_NUMBER; i++) {
+        ESP_ERROR_CHECK(led_strip_set_pixel(s_led_strip, i, s_red * power,
+                                            s_green * power, s_blue * power));
+    }
+
     ESP_ERROR_CHECK(led_strip_refresh(s_led_strip));
     gpio_set_level(NANO_C6_BLUE_LED_GPIO, power);
 }
