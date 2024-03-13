@@ -35,16 +35,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define LGFX_AUTODETECT  // 自動認識 (D-duino-32 XS, WT32-SC01, PyBadge
-                         // はパネルID読取りが出来ないため自動認識の対象から外れています)
+// #define LGFX_AUTODETECT  // 自動認識 (D-duino-32 XS, WT32-SC01, PyBadge
+//                          // はパネルID読取りが出来ないため自動認識の対象から外れています)
 
-// 複数機種の定義を行うか、LGFX_AUTODETECTを定義することで、実行時にボードを自動認識します。
+// // 複数機種の定義を行うか、LGFX_AUTODETECTを定義することで、実行時にボードを自動認識します。
 
-// ヘッダをincludeします。
-#include <LovyanGFX.hpp>
-#include <LGFX_AUTODETECT.hpp>  // クラス"LGFX"を準備します
+// // ヘッダをincludeします。
+// #include <LovyanGFX.hpp>
+// #include <LGFX_AUTODETECT.hpp>  // クラス"LGFX"を準備します
 
-#include "gw_title.h"
+// #include "gw_title.h"
 
 #include <fcntl.h>
 #include <string.h>
@@ -203,6 +203,63 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
     }
 }
 
+static esp_err_t zb_read_attr_resp_handler(
+    const esp_zb_zcl_cmd_read_attr_resp_message_t *message) {
+    // ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
+    // ESP_RETURN_ON_FALSE(
+    //     message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG,
+    //     TAG, "Received message: error status(%d)", message->info.status);
+    ESP_LOGI(TAG,
+             "Read attribute response: status(%d), cluster(0x%x), "
+             "attribute(0x%x), type(0x%x), value(%d)",
+             message->info.status, message->info.cluster, message->attribute.id,
+             message->attribute.data.type,
+             message->attribute.data.value
+                 ? *(uint8_t *)message->attribute.data.value
+                 : 0);
+    // if (message->info.dst_endpoint == HA_ESP_TEMP_ENDPOINT) {
+    //     switch (message->info.cluster) {
+    //         case ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT:
+    //             // ESP_LOGI(TAG, "Server time recieved %lu",
+    //             //          *(uint32_t *)message->attribute.data.value);
+    //             // struct timeval tv;
+    //             // tv.tv_sec = *(uint32_t *)message->attribute.data.value +
+    //             //             946684800 -
+    //             //             1080;  // after adding OTA cluster time shifted
+    //             //             to
+    //             //                    // 1080 sec... strange issue ...
+    //             // settimeofday(&tv, NULL);
+    //             // time_updated = true;
+    //             break;
+    //         default:
+    //             ESP_LOGI(TAG, "Message data: cluster(0x%x), attribute(0x%x)  ",
+    //                      message->info.cluster, message->attribute.id);
+    //     }
+    // }
+    return ESP_OK;
+}
+
+
+
+static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
+                                   const void *message) {
+    esp_err_t ret = ESP_OK;
+    switch (callback_id) {
+        // case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
+        //     ret = zb_attribute_handler(
+        //         (esp_zb_zcl_set_attr_value_message_t *)message);
+        //     break;
+        case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:
+            ret = zb_read_attr_resp_handler(
+                (esp_zb_zcl_cmd_read_attr_resp_message_t *)message);
+            break;
+        default:
+            ESP_LOGW(TAG, "Receive Zigbee action(0x%x) callback", callback_id);
+            break;
+    }
+    return ret;
+}
+
 static void esp_zb_task(void *pvParameters) {
     /* initialize Zigbee stack */
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZC_CONFIG();
@@ -212,6 +269,11 @@ static void esp_zb_task(void *pvParameters) {
     esp_zb_ep_list_t *esp_zb_on_off_switch_ep =
         esp_zb_on_off_switch_ep_create(HA_ONOFF_SWITCH_ENDPOINT, &switch_cfg);
     esp_zb_device_register(esp_zb_on_off_switch_ep);
+
+
+    esp_zb_core_action_handler_register(zb_action_handler);
+
+    
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_main_loop_iteration();
@@ -236,15 +298,15 @@ void app_main(void) {
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
     ESP_ERROR_CHECK(esp_zb_gateway_console_init());
 #endif
-// #if CONFIG_EXAMPLE_CONNECT_WIFI
-//     ESP_ERROR_CHECK(example_connect());
-// #if CONFIG_ESP_COEX_SW_COEXIST_ENABLE
-//     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
-//     esp_coex_wifi_i154_enable();
-// #else
-//     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-// #endif
-// #endif
+    // #if CONFIG_EXAMPLE_CONNECT_WIFI
+    //     ESP_ERROR_CHECK(example_connect());
+    // #if CONFIG_ESP_COEX_SW_COEXIST_ENABLE
+    //     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
+    //     esp_coex_wifi_i154_enable();
+    // #else
+    //     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+    // #endif
+    // #endif
 
     switch_driver_init(button_func_pair, PAIR_SIZE(button_func_pair),
                        esp_zb_buttons_handler);
@@ -254,20 +316,34 @@ void app_main(void) {
     gpio_reset_pin(btnA);
     gpio_set_direction(btnA, GPIO_MODE_INPUT);
 
-    while (1) {
-        if (gpio_get_level(btnA) == false) {
-            vTaskDelay(100);
-            if (gpio_get_level(btnA) == false) {
-                ESP_LOGI(TAG, "Reset Device");
-                esp_zb_factory_reset();
-                esp_restart();
-            }
-            vTaskDelay(1000);
-        }
-    }
+    // lcd.init();
+    // lcd.setRotation(1);
+    // lcd.pushImage(0, 0, 320, 60, image_data_gw_title);
 
-    lcd.init();
-    lcd.setRotation(1);
-    lcd.pushImage(0, 0, 320, 60, image_data_gw_title);
+    // vTaskDelay(8000);
+
+    while (1) {
+        // if (gpio_get_level(btnA) == false) {
+        //     vTaskDelay(100);
+        //     if (gpio_get_level(btnA) == false) {
+        //         ESP_LOGI(TAG, "Reset Device");
+        //         esp_zb_factory_reset();
+        //         esp_restart();
+        //     }
+        //     vTaskDelay(1000);
+        // }
+
+        vTaskDelay(1000);
+        esp_zb_zcl_read_attr_cmd_t cmd_req;
+        cmd_req.zcl_basic_cmd.dst_addr_u.addr_short = 0xffff;
+        cmd_req.zcl_basic_cmd.dst_endpoint          = 0xff;
+        cmd_req.zcl_basic_cmd.src_endpoint          = HA_ONOFF_SWITCH_ENDPOINT;
+        cmd_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+        cmd_req.clusterID    = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
+        cmd_req.attributeID  = ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID;
+        ESP_EARLY_LOGI(
+            TAG, "send 'ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT' read command");
+        esp_zb_zcl_read_attr_cmd_req(&cmd_req);
+    }
 }
 }

@@ -47,7 +47,7 @@
 #error Define ZB_ED_ROLE in idf.py menuconfig to compile light (End Device) source code.
 #endif
 
-static const char *TAG = "ESP_ZB_ON_OFF_LIGHT";
+static const char *TAG = "ESP_ZB_ENV_SENSOR";
 /********************* Define functions **************************/
 static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask) {
     ESP_ERROR_CHECK(esp_zb_bdb_start_top_level_commissioning(mode_mask));
@@ -105,42 +105,79 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct) {
     }
 }
 
-static esp_err_t zb_attribute_handler(
-    const esp_zb_zcl_set_attr_value_message_t *message) {
-    esp_err_t ret    = ESP_OK;
-    bool light_state = 0;
+// int temperature = 0;
 
+// void report_attr_cb(esp_zb_zcl_addr_t *addr, uint8_t endpoint,
+//                     uint16_t cluster_id, uint16_t attr_id,
+//                     esp_zb_zcl_attr_type_t attr_type, void *value) {
+//     ESP_LOGI(TAG, "Report attribute callback");
+//     if (cluster_id == ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT) {
+//         if (attr_id == ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID) {
+//             // TODO: 读取DH11的温度
+
+//             if (temperature > 2000)
+//                 temperature += 100;
+//             else
+//                 temperature -= 100;
+//             *(int16_t *)value = temperature;
+//             /* implemented some actions when temperature changed */
+//             ESP_LOGI(TAG, "Temperature changed to %d", *(int16_t *)value);
+//         }
+//     } else {
+//         /* Implement some actions if needed when other cluster changed */
+//         ESP_LOGI(TAG, "cluster:0x%x, attribute:0x%x changed ", cluster_id,
+//                  attr_id);
+//     }
+// }
+
+static esp_err_t zb_read_attr_resp_handler(
+    const esp_zb_zcl_cmd_read_attr_resp_message_t *message) {
     ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
     ESP_RETURN_ON_FALSE(
         message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG,
         TAG, "Received message: error status(%d)", message->info.status);
     ESP_LOGI(TAG,
-             "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), "
-             "data size(%d)",
-             message->info.dst_endpoint, message->info.cluster,
-             message->attribute.id, message->attribute.data.size);
-    if (message->info.dst_endpoint == HA_ESP_LIGHT_ENDPOINT) {
-        if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_ON_OFF) {
-            if (message->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID &&
-                message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_BOOL) {
-                light_state = message->attribute.data.value
-                                  ? *(bool *)message->attribute.data.value
-                                  : light_state;
-                ESP_LOGI(TAG, "Light sets to %s", light_state ? "On" : "Off");
-                light_driver_set_power(light_state);
-            }
+             "Read attribute response: status(%d), cluster(0x%x), "
+             "attribute(0x%x), type(0x%x), value(%d)",
+             message->info.status, message->info.cluster, message->attribute.id,
+             message->attribute.data.type,
+             message->attribute.data.value
+                 ? *(uint8_t *)message->attribute.data.value
+                 : 0);
+    if (message->info.dst_endpoint == HA_ESP_TEMP_ENDPOINT) {
+        switch (message->info.cluster) {
+            case ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT:
+
+                // ESP_LOGI(TAG, "Server time recieved %lu",
+                //          *(uint32_t *)message->attribute.data.value);
+                // struct timeval tv;
+                // tv.tv_sec = *(uint32_t *)message->attribute.data.value +
+                //             946684800 -
+                //             1080;  // after adding OTA cluster time shifted
+                //             to
+                //                    // 1080 sec... strange issue ...
+                // settimeofday(&tv, NULL);
+                // time_updated = true;
+                break;
+            default:
+                ESP_LOGI(TAG, "Message data: cluster(0x%x), attribute(0x%x)  ",
+                         message->info.cluster, message->attribute.id);
         }
     }
-    return ret;
+    return ESP_OK;
 }
 
 static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
                                    const void *message) {
     esp_err_t ret = ESP_OK;
     switch (callback_id) {
-        case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
-            ret = zb_attribute_handler(
-                (esp_zb_zcl_set_attr_value_message_t *)message);
+        // case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
+        //     ret = zb_attribute_handler(
+        //         (esp_zb_zcl_set_attr_value_message_t *)message);
+        //     break;
+        case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID:
+            ret = zb_read_attr_resp_handler(
+                (esp_zb_zcl_cmd_read_attr_resp_message_t *)message);
             break;
         default:
             ESP_LOGW(TAG, "Receive Zigbee action(0x%x) callback", callback_id);
@@ -148,6 +185,8 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
     }
     return ret;
 }
+
+uint16_t undefined_value;
 
 static void esp_zb_task(void *pvParameters) {
     /* initialize Zigbee stack */
@@ -167,6 +206,12 @@ static void esp_zb_task(void *pvParameters) {
                                             &temperature_sensor_cfg);
     esp_zb_device_register(esp_zb_temperature_sensor_ep);
 
+    esp_zb_attribute_list_t *esp_zb_temperature_meas_cluster =
+        esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT);
+    esp_zb_temperature_meas_cluster_add_attr(
+        esp_zb_temperature_meas_cluster,
+        ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, &undefined_value);
+
     esp_zb_core_action_handler_register(zb_action_handler);
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     ESP_ERROR_CHECK(esp_zb_start(false));
@@ -183,18 +228,14 @@ void app_main(void) {
     light_driver_init(LIGHT_DEFAULT_OFF);
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 
-    gpio_reset_pin(39);
-    gpio_set_direction(39, GPIO_MODE_INPUT);
+    int temperature = 0;
 
     while (1) {
-        if (gpio_get_level(39) == false) {
-            vTaskDelay(100);
-            if (gpio_get_level(39) == false) {
-                ESP_LOGI(TAG, "Reset Device");
-                esp_zb_factory_reset();
-                esp_restart();
-            }
-            vTaskDelay(1000);
-        }
+        temperature+=10;
+        esp_zb_zcl_status_t state_tmp = esp_zb_zcl_set_attribute_val(
+            HA_ESP_TEMP_ENDPOINT, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, &temperature, false);
+        vTaskDelay(1000);
     }
 }
