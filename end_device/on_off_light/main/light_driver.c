@@ -48,9 +48,9 @@ static led_strip_handle_t s_led_strip;
 static uint8_t s_red = 0, s_green = 0, s_blue = 255;
 
 void light_driver_set_power(bool power) {
-    // ESP_ERROR_CHECK(led_strip_set_pixel(s_led_strip, 0, s_red * power,
-    //                                     s_green * power, s_blue * power));
-    // ESP_ERROR_CHECK(led_strip_refresh(s_led_strip));
+    ESP_ERROR_CHECK(led_strip_set_pixel(s_led_strip, 0, s_red * power,
+                                        s_green * power, s_blue * power));
+    ESP_ERROR_CHECK(led_strip_refresh(s_led_strip));
     gpio_set_level(NANO_C6_BLUE_LED_GPIO, power);
 }
 
@@ -58,19 +58,19 @@ void light_driver_init(bool power) {
     gpio_reset_pin(NANO_C6_BLUE_LED_GPIO);
     gpio_set_direction(NANO_C6_BLUE_LED_GPIO, GPIO_MODE_OUTPUT);
 
-    // gpio_reset_pin(NANO_C6_STRIP_LED_PWR_GPIO);
-    // gpio_set_direction(NANO_C6_STRIP_LED_PWR_GPIO, GPIO_MODE_OUTPUT);
-    // gpio_set_level(NANO_C6_STRIP_LED_PWR_GPIO, 1);
+    gpio_reset_pin(NANO_C6_STRIP_LED_PWR_GPIO);
+    gpio_set_direction(NANO_C6_STRIP_LED_PWR_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_level(NANO_C6_STRIP_LED_PWR_GPIO, 1);
 
-    // led_strip_config_t led_strip_conf = {
-    //     .max_leds       = NANO_C6_STRIP_LED_NUMBER,
-    //     .strip_gpio_num = NANO_C6_STRIP_LED_GPIO,
-    // };
-    // led_strip_rmt_config_t rmt_conf = {
-    //     .resolution_hz = 10 * 1000 * 1000,  // 10MHz
-    // };
-    // ESP_ERROR_CHECK(
-    //     led_strip_new_rmt_device(&led_strip_conf, &rmt_conf, &s_led_strip));
+    led_strip_config_t led_strip_conf = {
+        .max_leds       = NANO_C6_STRIP_LED_NUMBER,
+        .strip_gpio_num = NANO_C6_STRIP_LED_GPIO,
+    };
+    led_strip_rmt_config_t rmt_conf = {
+        .resolution_hz = 10 * 1000 * 1000,  // 10MHz
+    };
+    ESP_ERROR_CHECK(
+        led_strip_new_rmt_device(&led_strip_conf, &rmt_conf, &s_led_strip));
 
     light_driver_set_power(power);
 }

@@ -34,27 +34,14 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <fcntl.h>
-#include <string.h>
+
+#include "string.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/usb_serial_jtag.h"
-#include "esp_coexist.h"
 #include "esp_log.h"
-#include "esp_netif.h"
-#include "esp_spiffs.h"
-#include "esp_vfs_eventfd.h"
-#include "esp_vfs_dev.h"
-#include "esp_vfs_usb_serial_jtag.h"
-#include "esp_wifi.h"
 #include "nvs_flash.h"
-#include "protocol_examples_common.h"
-#include "esp_zigbee_gateway.h"
-
 #include "ha/esp_zigbee_ha_standard.h"
-#include "switch_driver.h"
-
-
+#include "esp_zb_switch.h"
 
 #if defined ZB_ED_ROLE
 #error Define ZB_COORDINATOR_ROLE in idf.py menuconfig to compile light switch source code.
@@ -190,30 +177,14 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_main_loop_iteration();
 }
 
-
 void app_main(void)
 {
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),
     };
-    /* load Zigbee gateway platform config to initialization */
-    ESP_ERROR_CHECK(esp_zb_platform_config(&config));
     ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
-    ESP_ERROR_CHECK(esp_zb_gateway_console_init());
-#endif
-#if CONFIG_EXAMPLE_CONNECT_WIFI
-    ESP_ERROR_CHECK(example_connect());
-#if CONFIG_ESP_COEX_SW_COEXIST_ENABLE
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
-    esp_coex_wifi_i154_enable();
-#else
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-#endif
-#endif
+    ESP_ERROR_CHECK(esp_zb_platform_config(&config));
     switch_driver_init(button_func_pair, PAIR_SIZE(button_func_pair), esp_zb_buttons_handler);
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 }

@@ -47,20 +47,21 @@
     ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK /* Zigbee primary channel mask use in \
                                             the example */
 
-#define M5CORE_PORT_C_TX_GPIO (22)
-#define M5CORE_PORT_C_RX_GPIO (21)
+// #define M5CORE_PORT_C_TX_GPIO (1)
+// #define M5CORE_PORT_C_RX_GPIO (2)
 
-// #define M5CORE_PORT_C_TX_GPIO (16)
-// #define M5CORE_PORT_C_RX_GPIO (17)
+#define M5CORE_PORT_C_TX_GPIO (16)
+#define M5CORE_PORT_C_RX_GPIO (17)
 
 #define ESP_ZB_ZC_CONFIG()                                     \
     {                                                          \
         .esp_zb_role         = ESP_ZB_DEVICE_TYPE_COORDINATOR, \
-        .install_code_policy = INSTALLCODE_POLICY_ENABLE,      \
-        .nwk_cfg.zczr_cfg    = {                               \
-               .max_children = MAX_CHILDREN,                   \
-        },                                                  \
-    }
+        .install_code_policy = INSTALLCODE_POLICY_ENABLE, .nwk_cfg {
+.zczr_cfg = {
+    .max_children = MAX_CHILDREN,
+}
+}
+}
 
 #if CONFIG_ZB_RADIO_NATIVE
 #define ESP_ZB_DEFAULT_RADIO_CONFIG() \
@@ -70,7 +71,7 @@
     {                                                                \
         .radio_mode        = RADIO_MODE_UART_RCP,                    \
         .radio_uart_config = {                                       \
-            .port = 1,                                               \
+            .port = uart_port_t(1),                                  \
             .uart_config =                                           \
                 {                                                    \
                     .baud_rate           = 115200,                   \
