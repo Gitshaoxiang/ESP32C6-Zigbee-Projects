@@ -52,6 +52,8 @@
 #include <LovyanGFX.hpp>
 #include <LGFX_AUTODETECT.hpp>  // クラス"LGFX"を準備します
 #include "gw_title.h"
+#include "temp_icon.h"
+#include "btn.h"
 
 static LGFX lcd;  // LGFXのインスタンスを作成。
 static LGFX_Sprite sprite(
@@ -237,7 +239,14 @@ static esp_err_t zb_read_attr_resp_handler(
             float temp =
                 (float)(*(uint16_t *)message->attribute.data.value / 100.0);
             ESP_LOGI(TAG, "TEMP %.2f", temp);
-            lcd.printf("TEMP %.2f\r\n", temp);
+            // lcd.printf("TEMP %.2f\r\n", temp);
+            char info[50] = {0};
+
+            sprintf(info, "%.2fC\r\n", temp);
+            sprite.fillRect(0, 20, 320, 30, TFT_BLACK);
+            sprite.drawString(info, 160, 25);
+            sprite.pushSprite(0, 66);
+
         }
 
         break;
@@ -246,7 +255,13 @@ static esp_err_t zb_read_attr_resp_handler(
             float HUM =
                 (float)(*(uint16_t *)message->attribute.data.value / 100.0);
             ESP_LOGI(TAG, "HUM %.2f", HUM);
-            lcd.printf("HUM %.2f\r\n", HUM);
+            // lcd.printf("HUM %.2f\r\n", HUM);
+            char info[50] = {0};
+            sprintf(info, "%.2f%%\r\n", HUM);
+            sprite.fillRect(0, 80, 320, 30, TFT_BLACK);
+            sprite.drawString(info, 160, 85);
+            sprite.pushSprite(0, 66);
+
         }
 
         break;
@@ -303,11 +318,12 @@ void app_main(void) {
     lcd.init();
     lcd.setBrightness(255);
     lcd.setRotation(1);
-    // lcd.fillScreen(TFT_BLUE);
-
-    sprite.createSprite(320, 240);
-
     lcd.pushImage(0, 0, 320, 60, image_data_gw_title);
+    lcd.pushImage(91, 193, 138, 37, image_data_btn);
+
+    sprite.createSprite(320, 120);
+    sprite.setTextDatum(middle_center);
+    sprite.setFont(&fonts::FreeSansOblique24pt7b);
 
     gpio_reset_pin(gpio_num_t(21));
     gpio_reset_pin(gpio_num_t(22));
@@ -354,7 +370,8 @@ void app_main(void) {
         //     }
         //     vTaskDelay(1000);
         // }
-        vTaskDelay(1000);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+
         esp_zb_zcl_read_attr_cmd_t temp_cmd_req;
         temp_cmd_req.zcl_basic_cmd.dst_addr_u.addr_short = 0xffff;
         temp_cmd_req.zcl_basic_cmd.dst_endpoint          = 0xff;
@@ -365,7 +382,7 @@ void app_main(void) {
         ESP_EARLY_LOGI(
             TAG, "send 'ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT' read command");
         esp_zb_zcl_read_attr_cmd_req(&temp_cmd_req);
-        vTaskDelay(1000);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
         esp_zb_zcl_read_attr_cmd_t hum_cmd_req;
         hum_cmd_req.zcl_basic_cmd.dst_addr_u.addr_short = 0xffff;
         hum_cmd_req.zcl_basic_cmd.dst_endpoint          = 0xff;
