@@ -43,6 +43,11 @@
 #include "ha/esp_zigbee_ha_standard.h"
 #include "esp_zb_light.h"
 
+#include "hal/i2c_hal.h"
+#include "hal/gpio_hal.h"
+#include "soc/i2c_periph.h"
+#include "driver/i2c.h"
+
 #if !defined ZB_ED_ROLE
 #error Define ZB_ED_ROLE in idf.py menuconfig to compile light (End Device) source code.
 #endif
@@ -186,6 +191,9 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
     return ret;
 }
 
+uint16_t temperature_value;
+uint16_t humidity_value;
+
 uint16_t undefined_value;
 
 static void esp_zb_task(void *pvParameters) {
@@ -199,23 +207,146 @@ static void esp_zb_task(void *pvParameters) {
     // esp_zb_on_off_light_ep_create(HA_ESP_LIGHT_ENDPOINT, &light_cfg);
     // esp_zb_device_register(esp_zb_on_off_light_ep);
 
-    esp_zb_temperature_sensor_cfg_t temperature_sensor_cfg =
-        ESP_ZB_DEFAULT_TEMPERATURE_SENSOR_CONFIG();
-    esp_zb_ep_list_t *esp_zb_temperature_sensor_ep =
-        esp_zb_temperature_sensor_ep_create(HA_ESP_TEMP_ENDPOINT,
-                                            &temperature_sensor_cfg);
-    esp_zb_device_register(esp_zb_temperature_sensor_ep);
+    // esp_zb_temperature_sensor_cfg_t temperature_sensor_cfg =
+    //     ESP_ZB_DEFAULT_TEMPERATURE_SENSOR_CONFIG();
+    // esp_zb_ep_list_t *esp_zb_temperature_sensor_ep =
+    //     esp_zb_temperature_sensor_ep_create(HA_ESP_TEMP_ENDPOINT,
+    //                                         &temperature_sensor_cfg);
 
+    // esp_zb_device_register(esp_zb_temperature_sensor_ep);
+
+    // esp_zb_attribute_list_t *esp_zb_temperature_meas_cluster =
+    //     esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT);
+    // esp_zb_temperature_meas_cluster_add_attr(
+    //     esp_zb_temperature_meas_cluster,
+    //     ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, &temperature_value);
+
+    // esp_zb_attribute_list_t *esp_zb_humidity_meas_cluster =
+    //     esp_zb_zcl_attr_list_create(
+    //         ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT);
+
+    // esp_zb_humidity_meas_cluster_add_attr(
+    //     esp_zb_humidity_meas_cluster,
+    //     ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID, &humidity_value);
+
+    /* Temperature cluster */
     esp_zb_attribute_list_t *esp_zb_temperature_meas_cluster =
         esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT);
     esp_zb_temperature_meas_cluster_add_attr(
         esp_zb_temperature_meas_cluster,
         ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, &undefined_value);
+    esp_zb_temperature_meas_cluster_add_attr(
+        esp_zb_temperature_meas_cluster,
+        ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MIN_VALUE_ID, &undefined_value);
+    esp_zb_temperature_meas_cluster_add_attr(
+        esp_zb_temperature_meas_cluster,
+        ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_MAX_VALUE_ID, &undefined_value);
+
+    /* Humidity cluster */
+    esp_zb_attribute_list_t *esp_zb_humidity_meas_cluster =
+        esp_zb_zcl_attr_list_create(
+            ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT);
+    esp_zb_humidity_meas_cluster_add_attr(
+        esp_zb_humidity_meas_cluster,
+        ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID, &undefined_value);
+    esp_zb_humidity_meas_cluster_add_attr(
+        esp_zb_humidity_meas_cluster,
+        ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MIN_VALUE_ID,
+        &undefined_value);
+    esp_zb_humidity_meas_cluster_add_attr(
+        esp_zb_humidity_meas_cluster,
+        ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_MAX_VALUE_ID,
+        &undefined_value);
+
+    esp_zb_cluster_list_t *esp_zb_cluster_list =
+        esp_zb_zcl_cluster_list_create();
+    esp_zb_cluster_list_add_temperature_meas_cluster(
+        esp_zb_cluster_list, esp_zb_temperature_meas_cluster,
+        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+    esp_zb_cluster_list_add_humidity_meas_cluster(
+        esp_zb_cluster_list, esp_zb_humidity_meas_cluster,
+        ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
+    esp_zb_ep_list_t *esp_zb_ep_list = esp_zb_ep_list_create();
+    esp_zb_ep_list_add_ep(esp_zb_ep_list, esp_zb_cluster_list,
+                          HA_ESP_TEMP_ENDPOINT, ESP_ZB_AF_HA_PROFILE_ID,
+                          ESP_ZB_HA_SIMPLE_SENSOR_DEVICE_ID);
+    esp_zb_device_register(esp_zb_ep_list);
 
     esp_zb_core_action_handler_register(zb_action_handler);
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_main_loop_iteration();
+}
+
+#define I2C_MASTER_SCL_IO 1 /*!< GPIO number used for I2C master clock */
+#define I2C_MASTER_SDA_IO 2 /*!< GPIO number used for I2C master data  */
+#define I2C_MASTER_NUM                                                         \
+    0 /*!< I2C master i2c port number, the number of i2c peripheral interfaces \
+         available will depend on the chip */
+#define I2C_MASTER_FREQ_HZ        100000 /*!< I2C master clock frequency */
+#define I2C_MASTER_TX_BUF_DISABLE 0      /*!< I2C master doesn't need buffer */
+#define I2C_MASTER_RX_BUF_DISABLE 0      /*!< I2C master doesn't need buffer */
+#define I2C_MASTER_TIMEOUT_MS     1000
+
+#define SHT30_ADDR 0x44
+
+void i2c_master_init() {
+    i2c_config_t conf;
+    conf.mode             = I2C_MODE_MASTER;
+    conf.sda_io_num       = I2C_MASTER_SDA_IO;
+    conf.sda_pullup_en    = GPIO_PULLUP_ENABLE;
+    conf.scl_io_num       = I2C_MASTER_SCL_IO;
+    conf.scl_pullup_en    = GPIO_PULLUP_ENABLE;
+    conf.master.clk_speed = I2C_MASTER_FREQ_HZ;
+    i2c_param_config(I2C_MASTER_NUM, &conf);
+    i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
+}
+
+esp_err_t sht30_read_data(float *temperature, float *humidity) {
+    uint8_t data[6];
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, SHT30_ADDR << 1 | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, 0x2C, true);
+    i2c_master_write_byte(cmd, 0x06, true);
+    i2c_master_stop(cmd);
+    i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+
+    vTaskDelay(500 / portTICK_PERIOD_MS);  // Wait for measurement to complete
+
+    cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, SHT30_ADDR << 1 | I2C_MASTER_READ, true);
+    i2c_master_read(cmd, data, 6, I2C_MASTER_ACK);
+    i2c_master_stop(cmd);
+    i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+
+    *temperature = ((((data[0] * 256.0) + data[1]) * 175) / 65535.0) - 45;
+    *humidity    = ((((data[3] * 256.0) + data[4]) * 100) / 65535.0);
+    return ESP_OK;
+}
+
+uint16_t temperature = 0;
+uint16_t humidity    = 0;
+
+void sht30_task(void *pvParameters) {
+    float temp, hum;
+    while (1) {
+        esp_err_t ret = sht30_read_data(&temp, &hum);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Temperature: %.2f°C, Humidity: %.2f%%", temp, hum);
+
+            temperature = (uint16_t)(temp * 100);
+            humidity    = (uint16_t)(hum * 100);
+
+        } else {
+            ESP_LOGE(TAG, "Failed to read data from SHT30 sensor");
+        }
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
 }
 
 void app_main(void) {
@@ -228,14 +359,42 @@ void app_main(void) {
     light_driver_init(LIGHT_DEFAULT_OFF);
     xTaskCreate(esp_zb_task, "Zigbee_main", 4096, NULL, 5, NULL);
 
-    int temperature = 0;
+    i2c_master_init();
+    xTaskCreate(sht30_task, "sht30_task", 4096, NULL, 10, NULL);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
 
     while (1) {
-        temperature+=10;
+        // uint8_t cmd[] = {0x2C, 0x06};
+
+        // int data[6];
+
+        // i2c_master_write_read_device(
+        //     I2C_MASTER_NUM, SHT3X_I2C_ADDR, cmd, 2, data, 6,
+        //     I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+
+        // float cTemp    = 0;
+        // float fTemp    = 0;
+        // float humidity = 0;
+
+        // cTemp    = ((((data[0] * 256.0) + data[1]) * 175) / 65535.0) - 45;
+        // fTemp    = (cTemp * 1.8) + 32;
+        // humidity = ((((data[3] * 256.0) + data[4]) * 100) / 65535.0);
+
+        // ESP_LOGI(TAG, "cTemp: %.2f", cTemp);
+        // ESP_LOGI(TAG, "fTemp: %.2f", fTemp);
+        // ESP_LOGI(TAG, "humidity: %.2f", humidity);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+
         esp_zb_zcl_status_t state_tmp = esp_zb_zcl_set_attribute_val(
             HA_ESP_TEMP_ENDPOINT, ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT,
             ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
             ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, &temperature, false);
-        vTaskDelay(1000);
+
+        esp_zb_zcl_status_t state_hum = esp_zb_zcl_set_attribute_val(
+            HA_ESP_TEMP_ENDPOINT,
+            ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT,
+            ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+            ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID, &humidity,
+            false);
     }
 }

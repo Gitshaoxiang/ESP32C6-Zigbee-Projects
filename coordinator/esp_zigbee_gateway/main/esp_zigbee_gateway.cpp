@@ -36,15 +36,26 @@
  */
 
 // #define LGFX_AUTODETECT  // 自動認識 (D-duino-32 XS, WT32-SC01, PyBadge
-//                          // はパネルID読取りが出来ないため自動認識の対象から外れています)
+//                          //
+//                          はパネルID読取りが出来ないため自動認識の対象から外れています)
 
-// // 複数機種の定義を行うか、LGFX_AUTODETECTを定義することで、実行時にボードを自動認識します。
+// //
+// 複数機種の定義を行うか、LGFX_AUTODETECTを定義することで、実行時にボードを自動認識します。
 
 // // ヘッダをincludeします。
-// #include <LovyanGFX.hpp>
-// #include <LGFX_AUTODETECT.hpp>  // クラス"LGFX"を準備します
 
-// #include "gw_title.h"
+// #define LGFX_AUTODETECT  // 自動認識 (D-duino-32 XS, WT32-SC01, PyBadge
+// はパネルID読取りが出来ないため自動認識の対象から外れています)
+
+#define LGFX_M5STACK  // M5Stack M5Stack Basic / Gray / Go / Fire
+
+#include <LovyanGFX.hpp>
+#include <LGFX_AUTODETECT.hpp>  // クラス"LGFX"を準備します
+#include "gw_title.h"
+
+static LGFX lcd;  // LGFXのインスタンスを作成。
+static LGFX_Sprite sprite(
+    &lcd);  // スプライトを使う場合はLGFX_Spriteのインスタンスを作成。
 
 #include <fcntl.h>
 #include <string.h>
@@ -207,8 +218,9 @@ static esp_err_t zb_read_attr_resp_handler(
     const esp_zb_zcl_cmd_read_attr_resp_message_t *message) {
     // ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
     // ESP_RETURN_ON_FALSE(
-    //     message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG,
-    //     TAG, "Received message: error status(%d)", message->info.status);
+    //     message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS,
+    //     ESP_ERR_INVALID_ARG, TAG, "Received message: error status(%d)",
+    //     message->info.status);
     ESP_LOGI(TAG,
              "Read attribute response: status(%d), cluster(0x%x), "
              "attribute(0x%x), type(0x%x), value(%d)",
@@ -218,28 +230,36 @@ static esp_err_t zb_read_attr_resp_handler(
                  ? *(uint8_t *)message->attribute.data.value
                  : 0);
     // if (message->info.dst_endpoint == HA_ESP_TEMP_ENDPOINT) {
-    //     switch (message->info.cluster) {
-    //         case ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT:
-    //             // ESP_LOGI(TAG, "Server time recieved %lu",
-    //             //          *(uint32_t *)message->attribute.data.value);
-    //             // struct timeval tv;
-    //             // tv.tv_sec = *(uint32_t *)message->attribute.data.value +
-    //             //             946684800 -
-    //             //             1080;  // after adding OTA cluster time shifted
-    //             //             to
-    //             //                    // 1080 sec... strange issue ...
-    //             // settimeofday(&tv, NULL);
-    //             // time_updated = true;
-    //             break;
-    //         default:
-    //             ESP_LOGI(TAG, "Message data: cluster(0x%x), attribute(0x%x)  ",
-    //                      message->info.cluster, message->attribute.id);
-    //     }
+    switch (message->info.cluster) {
+        case ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT: {
+            ESP_LOGI(TAG, "ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT");
+
+            float temp =
+                (float)(*(uint16_t *)message->attribute.data.value / 100.0);
+            ESP_LOGI(TAG, "TEMP %.2f", temp);
+            lcd.printf("TEMP %.2f\r\n", temp);
+        }
+
+        break;
+        case ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT: {
+            ESP_LOGI(TAG, "ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT");
+            float HUM =
+                (float)(*(uint16_t *)message->attribute.data.value / 100.0);
+            ESP_LOGI(TAG, "HUM %.2f", HUM);
+            lcd.printf("HUM %.2f\r\n", HUM);
+        }
+
+        break;
+            // default:
+            // ESP_LOGI(TAG,
+            //          "Message data: cluster(0x%x), attribute(0x%x)
+            //          ",
+            //          message->info.cluster,
+            //          message->attribute.id);
+    };
     // }
     return ESP_OK;
 }
-
-
 
 static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
                                    const void *message) {
@@ -270,22 +290,28 @@ static void esp_zb_task(void *pvParameters) {
         esp_zb_on_off_switch_ep_create(HA_ONOFF_SWITCH_ENDPOINT, &switch_cfg);
     esp_zb_device_register(esp_zb_on_off_switch_ep);
 
-
     esp_zb_core_action_handler_register(zb_action_handler);
 
-    
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_main_loop_iteration();
 }
 
-// static LGFX lcd;  // LGFXのインスタンスを作成。
-// static LGFX_Sprite sprite(
-//     &lcd);  // スプライトを使う場合はLGFX_Spriteのインスタンスを作成。
-
 extern "C" {
 
 void app_main(void) {
+    lcd.init();
+    lcd.setBrightness(255);
+    lcd.setRotation(1);
+    // lcd.fillScreen(TFT_BLUE);
+
+    sprite.createSprite(320, 240);
+
+    lcd.pushImage(0, 0, 320, 60, image_data_gw_title);
+
+    gpio_reset_pin(gpio_num_t(21));
+    gpio_reset_pin(gpio_num_t(22));
+
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config  = ESP_ZB_DEFAULT_HOST_CONFIG(),
@@ -316,10 +342,6 @@ void app_main(void) {
     gpio_reset_pin(btnA);
     gpio_set_direction(btnA, GPIO_MODE_INPUT);
 
-    // lcd.init();
-    // lcd.setRotation(1);
-    // lcd.pushImage(0, 0, 320, 60, image_data_gw_title);
-
     // vTaskDelay(8000);
 
     while (1) {
@@ -332,18 +354,29 @@ void app_main(void) {
         //     }
         //     vTaskDelay(1000);
         // }
-
         vTaskDelay(1000);
-        esp_zb_zcl_read_attr_cmd_t cmd_req;
-        cmd_req.zcl_basic_cmd.dst_addr_u.addr_short = 0xffff;
-        cmd_req.zcl_basic_cmd.dst_endpoint          = 0xff;
-        cmd_req.zcl_basic_cmd.src_endpoint          = HA_ONOFF_SWITCH_ENDPOINT;
-        cmd_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-        cmd_req.clusterID    = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
-        cmd_req.attributeID  = ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID;
+        esp_zb_zcl_read_attr_cmd_t temp_cmd_req;
+        temp_cmd_req.zcl_basic_cmd.dst_addr_u.addr_short = 0xffff;
+        temp_cmd_req.zcl_basic_cmd.dst_endpoint          = 0xff;
+        temp_cmd_req.zcl_basic_cmd.src_endpoint = HA_ONOFF_SWITCH_ENDPOINT;
+        temp_cmd_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+        temp_cmd_req.clusterID    = ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT;
+        temp_cmd_req.attributeID  = ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID;
         ESP_EARLY_LOGI(
             TAG, "send 'ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT' read command");
-        esp_zb_zcl_read_attr_cmd_req(&cmd_req);
+        esp_zb_zcl_read_attr_cmd_req(&temp_cmd_req);
+        vTaskDelay(1000);
+        esp_zb_zcl_read_attr_cmd_t hum_cmd_req;
+        hum_cmd_req.zcl_basic_cmd.dst_addr_u.addr_short = 0xffff;
+        hum_cmd_req.zcl_basic_cmd.dst_endpoint          = 0xff;
+        hum_cmd_req.zcl_basic_cmd.src_endpoint = HA_ONOFF_SWITCH_ENDPOINT;
+        hum_cmd_req.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+        hum_cmd_req.clusterID = ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT;
+        hum_cmd_req.attributeID =
+            ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID;
+        ESP_EARLY_LOGI(
+            TAG, "send 'ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT' read command");
+        esp_zb_zcl_read_attr_cmd_req(&hum_cmd_req);
     }
 }
 }
